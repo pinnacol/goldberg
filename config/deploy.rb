@@ -6,7 +6,7 @@ require 'lib/capistrano_extras'
 default_run_options[:pty] = true
 
 set :application, "goldberg"
-set :repository,  "git://github.com/c42/goldberg.git"
+set :repository,  "git://github.pinnacol.com/pinnacol/goldberg.git"
 set :deploy_to,   "/var/www/rails-apps/#{application}"
 set :branch,      "master"
 set :use_sudo,    false
