@@ -29,7 +29,7 @@ class Init
         p.run_build
       rescue Exception => e
         Goldberg.logger.error "Build on project #{p.name} failed because of #{e}"
-        Goldberg.logger.error e.backtrace
+        Goldberg.logger.error e.backtrace.join("\n")
       end
     end
   end
