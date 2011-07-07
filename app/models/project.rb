@@ -65,7 +65,7 @@ class Project < ActiveRecord::Base
                                       :environment_string => environment_string).tap(&:run)
       self.build_requested = false
       Goldberg.logger.info "Build #{ new_build.status }"
-      after_build_runner.execute(latest_build, previous_build_status)
+      after_build_runner.execute(new_build, previous_build_status)
     end
     self.next_build_at = Time.now + frequency.seconds
     self.save
@@ -109,7 +109,7 @@ class Project < ActiveRecord::Base
   end
 
   def config
-    self.class.temp_config = ProjectConfig.new
+    self.class.temp_config = Configuration.new
     if File.exists?(File.expand_path('goldberg_config.rb', self.code_path))
       config_code = Environment.read_file(File.expand_path('goldberg_config.rb', self.code_path))
       eval(config_code)
@@ -122,7 +122,7 @@ class Project < ActiveRecord::Base
   end
 
   def self.configure
-    (Project.temp_config ||= ProjectConfig.new).tap{|config| yield config}
+    (Project.temp_config ||= Configuration.new).tap{|config| yield config}
   end
 
   def self.projects_to_build

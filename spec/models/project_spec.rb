@@ -221,7 +221,7 @@ describe Project do
       end
 
       it "should read the environment variables from the config" do
-        config = ProjectConfig.new.tap{ |c| c.stub(:environment_string).and_return("FOO=bar") }
+        config = Project::Configuration.new.tap{ |c| c.stub(:environment_string).and_return("FOO=bar") }
         project.stub(:config).and_return(config)
         project.builds.should_receive(:create!).with(hash_including(:environment_string => "FOO=bar")).and_return(build)
         project.run_build
@@ -233,12 +233,15 @@ describe Project do
 
         BuildMailNotification.stub!(:new).and_return(mail_notification)
         configuration = Project.configure do |config|
-          config.on_build_completion do |build,notification|
-            callback_tester.test_call(build,notification)
+          config.on_build_completion do |build, notification, prev_build_status|
+            callback_tester.test_call(build, notification, prev_build_status)
           end
         end
 
-        callback_tester.should_receive(:test_call).with(build, mail_notification)
+        latest_build = Build.new :number => 8, :status => 'prev_status'
+        project.builds << latest_build
+
+        callback_tester.should_receive(:test_call).with(build, mail_notification,'prev_status')
 
         project.stub(:config).and_return(configuration)
         project.builds.stub(:create!).and_return(build)
