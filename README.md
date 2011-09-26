@@ -1,6 +1,6 @@
 # Goldberg 1.0.0
 
-© Copyright 2010–2011 [C42 Engineering][]. All Rights Reserved. <a href='http://goldberg.c42.in/projects/goldberg'><img src='http://goldberg.c42.in/projects/goldberg.png' alt='Goldberg Build Status'></a>
+© Copyright 2010–2011 [C42 Engineering][]. All Rights Reserved. <a href='http://ci.c42.in/projects/goldberg'><img src='http://ci.c42.in/projects/goldberg.png' alt='Goldberg Build Status'></a>
 
 Goldberg is an alternative to [CruiseControl.rb][] that adheres to the same principles of being simple to use and easy to contribute to. It currently meets all common use cases of a lightweight CI server, and we plan to add more over time. A large majority of projects should be able to switch from CC.rb to Goldberg with little or no effort.
 
@@ -8,7 +8,7 @@ The upcoming [1.1 release](https://github.com/c42/goldberg/issues/milestones?_pj
 
 Goldberg can be used to continuously integrate codebases built using any language, not just Ruby.
 
-Visit [goldberg.c42.in][] to see a live Goldberg server.
+Visit [ci.c42.in][] to see a live Goldberg server.
 
 ## Setting up your own Goldberg server
 
@@ -29,7 +29,7 @@ Goldberg is currently tested only on Linux/Mac OS X but should run on JRuby on W
        git clone git://github.com/c42/goldberg.git
        cd goldberg
        bundle install
-       rake db:migrate
+       rake db:setup
 
 ### Setting up a production instance
 
@@ -66,7 +66,7 @@ There's a god-script under config directory which can be used to start a poller 
 
 ### Tracking build status
 
-Goldberg generates feeds that work with all CruiseControl-compatible monitors like [CCMenu (mac)][], [BuildNotify (linux)][] & CCTray (windows). The feed is located in the root and is named `cc.xml` (for finicky monitors we also have cctray.xml & XmlStatusReport.aspx). eg: [cc.xml](http://goldberg.c42.in/cc.xml)
+Goldberg generates feeds that work with all CruiseControl-compatible monitors like [CCMenu (mac)][], [BuildNotify (linux)][] & CCTray (windows). The feed is located in the root and is named `cc.xml` (for finicky monitors we also have cctray.xml & XmlStatusReport.aspx). eg: [cc.xml](http://ci.c42.in/cc.xml)
 
 ### Configuration
 
@@ -88,19 +88,20 @@ Every project in Goldberg can have its own custom configuration by checking in a
       #Goldberg configuration
       Project.configure do |config|
         config.frequency = 20
-        config.ruby = '1.9.2'     # Your server needs to have rvm installed for this setting to be considered
+        config.ruby = '1.9.2'         # Your server needs to have rvm installed for this setting to be considered
         config.environment_variables = {"FOO" => "bar"}
         config.after_build lambda { |build, project| `touch ~/Desktop/actually_built` }
         config.timeout = 10.minutes
-        config.nice = 5           # Use this to reduce the scheduling priority (increase niceness) of CPU
-                                  # intensive builds that may otherwise leave the Goldberg web application
-                                  # unresponsive. Uses the UNIX `nice` command. Defaults to '0'.
-                                  # Positive values have lower priority with a max of 19 on OSX and 20 on
-                                  # Linux. You can set negative values, but we don't see the point.
-        config.command = 'make'   # To be used if you're using anything other than rake
-        config.rake_task = 'ci'   # To be used if your CI build runs something other than the default rake. 
-                                  # Not relevant if you're using config.command.
-        config.group = 'c42'      # Running a lot of projects on one server? Use this to logically group them.
+        config.nice = 5               # Use this to reduce the scheduling priority (increase niceness) of CPU
+                                      # intensive builds that may otherwise leave the Goldberg web application
+                                      # unresponsive. Uses the UNIX `nice` command. Defaults to '0'.
+                                      # Positive values have lower priority with a max of 19 on OSX and 20 on
+                                      # Linux. You can set negative values, but we don't see the point.
+        config.command = 'make'       # To be used if you're using anything other than rake
+        config.rake_task = 'ci'       # To be used if your CI build runs something other than the default rake.
+                                      # Not relevant if you're using config.command.
+        config.group = 'c42'          # Running a lot of projects on one server? Use this to logically group them.
+        config.use_bundle_exec = true # Run 'bundle exec rake', recommended for Rails projects
       end
 
 If you want the project to be checked for updates every 5 seconds, you will need to change the poller frequency to less than 5 seconds using `goldberg.yml` as mentioned above.
@@ -134,6 +135,10 @@ The callbacks are part of goldberg_config.rb
 
 Assume you want to post a message on IRC channel & there is a gem that can be used to do so, you can simply require the gem at the start of the project_config.rb file & write the code to post message in any of the callbacks.
 
+#### Build Artefact publishing
+
+Goldberg allows you to publish build artefacts so that it's accessible from the web interface. Goldberg passes an environment variable 'BUILD_ARTEFACTS' ('BUILD_ARTIFACTS' is an alias) which contains a path on the server's filesystem. You need to, as part of your build, copy your artefacts (say, 'log/test.log', 'coverage/' or 'foo.gem') to the directory whose path BUILD_ARTEFACTS will provide. Goldberg will then publish these on the build page. You can copy over individual files or whole directories.
+
 ### Help
 
       # To get man page style help
@@ -156,16 +161,17 @@ Assume you want to post a message on IRC channel & there is a gem that can be us
 -   Aakash Dharmadhikari ([aakashd][])
 -   Rohit Arondekar ([rohit][])
 -   Arpan Chinta ([arpancj][])
+-   Surya Gaddipati ([suryagaddipati])
+-   Lawrence Wang ([levity])
 
   [C42 Engineering]: http://c42.in
   [CruiseControl.rb]: https://github.com/thoughtworks/cruisecontrol.rb
-  [goldberg.c42.in]: http://goldberg.c42.in
+  [ci.c42.in]: http://ci.c42.in
   [Bundler]: http://gembundler.com/
   [CCMenu (mac)]: http://ccmenu.sourceforge.net/
   [BuildNotify (linux)]: https://bitbucket.org/Anay/buildnotify/wiki/Home
-  [goldberg.c42.in/XmlStatusReport.aspx]: http://goldberg.c42.in/XmlStatusReport.aspx
+  [ci.c42.in/XmlStatusReport.aspx]: http://ci.c42.in/XmlStatusReport.aspx
   [srushti]: http://github.com/srushti
-  [srushtitwitter]: http://github.com/srshti
   [jasim]: http://github.com/jasim
   [dexterous]: http://github.com/dexterous
   [gja]: http://github.com/gja
@@ -175,3 +181,6 @@ Assume you want to post a message on IRC channel & there is a gem that can be us
   [aakashd]: http://github.com/aakashd
   [rohit]: http://github.com/rohit
   [arpancj]: http://github.com/arpancj
+  [suryagaddipati]: http://github.com/suryagaddipati
+  [levity]: http://github.com/levity
+

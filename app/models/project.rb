@@ -8,11 +8,13 @@ class Project < ActiveRecord::Base
   cattr_accessor :temp_config
 
   validates_presence_of :branch, :name, :url
+  validates_uniqueness_of :name
 
   delegate :frequency, :ruby, :environment_string, :timeout, :nice, :group, :to => :config
 
   def self.add(options)
     project = Project.new(:name => options[:name], :url => options[:url], :branch => options[:branch], :scm => options[:scm])
+    return if !project.valid?
     if project.checkout
       project.save!
       project
@@ -59,11 +61,11 @@ class Project < ActiveRecord::Base
   def run_build
     clean_up_older_builds
     if self.repository.update || build_required?
+      update_attribute :build_requested, false
       previous_build_status = last_complete_build_status
       prepare_for_build
       new_build = self.builds.create!(:number => latest_build.number + 1, :previous_build_revision => latest_build.revision, :ruby => ruby,
                                       :environment_string => environment_string).tap(&:run)
-      self.build_requested = false
       Goldberg.logger.info "Build #{ new_build.status }"
       after_build_runner.execute(new_build, previous_build_status)
     end
@@ -86,10 +88,7 @@ class Project < ActiveRecord::Base
   end
 
   def build_command
-    build_command = config.command || "rake #{config.rake_task}"
-    niced_command = "nice -n #{config.nice} #{build_command}"
-    bundler_command = File.exists?(File.join(self.code_path, 'Gemfile')) ? "(#{Bundle.check_and_install}) && " : ""
-    bundler_command << niced_command
+    build_command = config.command || "#{config.use_bundle_exec ? 'bundle exec ' : ''}rake #{config.rake_task}"
   end
 
   def map_to_cctray_project_status
@@ -98,6 +97,17 @@ class Project < ActiveRecord::Base
 
   def last_complete_build
     builds.detect { |build| !['building', 'cancelled'].include?(build.status) } || Build.null
+  end
+
+  def culprits_for_failure
+    culprit_revision_range.nil?? '' : repository.author(culprit_revision_range.collect(&:revision))
+  end
+
+  def culprit_revision_range
+    return nil if last_complete_build.status == 'passed'
+    culprit_build = nil
+    builds.each{|build| culprit_build = build if build.status =='failed' ; return [build, culprit_build] if build.status == 'passed'}
+    [culprit_build]
   end
 
   def repository

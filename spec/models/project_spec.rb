@@ -21,6 +21,11 @@ describe Project do
         expect_command('git clone --depth 1 git://some.url.git some_path/some_project/code --branch master', :execute => true)
         lambda { Project.add({:url => "git://some.url.git", :name => 'some_project', :branch => 'master', :scm => 'git'}) }.should change(Project, :count).by(1)
       end
+
+      it "doesn't do anything if a project already exists with the same name" do
+        Factory(:project, :name => 'foo')
+        lambda { Project.add(:name => 'foo').should be_nil }.should_not change(Project, :count)
+      end
     end
 
     context "removing a project" do
@@ -85,33 +90,24 @@ describe Project do
   end
 
   describe "command" do
-    it "does not prefix bundler related command if Gemfile is missing" do
-      project = Factory(:project)
-      File.should_receive(:exists?).with(File.join(project.code_path, 'Gemfile')).and_return(false)
-      File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.code_path)).and_return(false)
-      File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.path)).and_return(false)
-      project.build_command.should_not include(Bundle.check_and_install)
-    end
+    let(:project) { Factory(:project) }
 
-    it "prefixes bundler related command if Gemfile is present" do
-      project = Factory(:project)
-      File.should_receive(:exists?).with(File.join(project.code_path, 'Gemfile')).and_return(true)
-      File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.code_path)).and_return(false)
-      File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.path)).and_return(false)
-      project.build_command.should include(Bundle.check_and_install)
+    it "defaults the custom command to rake" do
+      project.build_command.should eq('rake default')
     end
 
     it "is able to retrieve the custom command" do
-      project = Factory(:project)
-      File.should_receive(:exists?).with(File.join(project.code_path, 'Gemfile'))
       File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.code_path)).and_return(true)
       File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.path)).and_return(false)
       Environment.stub!(:read_file).with(File.expand_path('goldberg_config.rb', project.code_path)).and_return("Project.configure { |config| config.command = 'cmake' }")
-      project.build_command.should eq('nice -n 0 cmake')
+      project.build_command.should eq('cmake')
     end
 
-    it "defaults the custom command to rake" do
-      Factory(:project).build_command.should eq('nice -n 0 rake default')
+    it "does 'bundle exec' if asked to" do
+      File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.code_path)).and_return(true)
+      File.stub!(:exists?).with(File.expand_path('goldberg_config.rb', project.path)).and_return(false)
+      Environment.stub!(:read_file).with(File.expand_path('goldberg_config.rb', project.code_path)).and_return("Project.configure { |config| config.use_bundle_exec = true }")
+      project.build_command.should == 'bundle exec rake default'
     end
   end
 
@@ -267,6 +263,45 @@ describe Project do
     interrupted_build.reload.status.should == 'cancelled'
     passed_build.reload.status.should == 'passed'
     failed_build.reload.status.should == 'failed'
+  end
+
+  describe "culprit_revision_range" do
+    it"returns build which orignially failed " do
+      project = Factory(:project)
+      passed_build = Factory(:build, :project => project, :status => 'passed',:revision => 'passed1')
+      culprit_build = Factory(:build, :project => project, :status => 'failed',:revision => 'failed1')
+      innocent_build = Factory(:build, :project => project, :status => 'failed',:revision => 'failed2')
+      project.culprit_revision_range.should == [passed_build,culprit_build]
+    end
+    it"returns last failed build if there are no passing builds" do
+      project = Factory(:project)
+      culprit_build = Factory(:build, :project => project, :status => 'failed')
+      innocent_build2 = Factory(:build, :project => project, :status => 'failed')
+      innocent_build = Factory(:build, :project => project, :status => 'failed')
+      project.culprit_revision_range.should == [culprit_build]
+    end
+    it"returns nil if the latest build passed" do
+      project = Factory(:project)
+      failed_build = Factory(:build, :project => project, :status => 'failed')
+      passed_build = Factory(:build, :project => project, :status => 'passed')
+      project.culprit_revision_range.should be_nil
+    end
+  end
+
+  describe "culprits_for_failure" do
+    it "returns authors of the culprit build" do
+      project = Factory(:project)
+      passed_build = Factory(:build, :project => project, :status => 'passed', :revision => 'passed_revision')
+      failed_build = Factory(:build, :project => project, :status => 'failed', :revision => 'failed_revision')
+
+      project.repository.should_receive(:author).with(['passed_revision','failed_revision'])
+      project.culprits_for_failure
+    end
+    it "returns empty string if there is no culprit build" do
+      project = Factory(:project)
+      passed_build = Factory(:build, :project => project, :status => 'passed')
+      project.culprits_for_failure.should  == ''
+    end
   end
 
   describe "build preprocessing" do
