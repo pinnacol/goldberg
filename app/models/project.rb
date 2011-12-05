@@ -12,6 +12,8 @@ class Project < ActiveRecord::Base
 
   delegate :frequency, :ruby, :environment_string, :timeout, :nice, :group, :to => :config
 
+  scope :projects_to_build, where("build_requested = ? or next_build_at is null or next_build_at <= ?", true, Time.now)
+
   def self.add(options)
     project = Project.new(:name => options[:name], :url => options[:url], :branch => options[:branch], :scm => options[:scm])
     return if !project.valid?
@@ -64,13 +66,16 @@ class Project < ActiveRecord::Base
       update_attribute :build_requested, false
       previous_build_status = last_complete_build_status
       prepare_for_build
-      new_build = self.builds.create!(:number => latest_build.number + 1, :previous_build_revision => latest_build.revision, :ruby => ruby,
-                                      :environment_string => environment_string).tap(&:run)
+      new_build = new_build(:number => latest_build.number + 1, :previous_build_revision => latest_build.revision, :ruby => ruby, :environment_string => environment_string).tap(&:run)
       Goldberg.logger.info "Build #{ new_build.status }"
       after_build_runner.execute(new_build, previous_build_status)
     end
     self.next_build_at = Time.now + frequency.seconds
     self.save
+  end
+
+  def new_build(params)
+    self.builds.create!(params)
   end
 
   def clean_up_older_builds
@@ -100,14 +105,17 @@ class Project < ActiveRecord::Base
   end
 
   def culprits_for_failure
-    culprit_revision_range.nil?? '' : repository.author(culprit_revision_range.collect(&:revision))
+    culprit_revision_range.nil? ? '' : repository.author(culprit_revision_range.collect(&:revision))
   end
 
   def culprit_revision_range
-    return nil if last_complete_build.status == 'passed'
-    culprit_build = nil
-    builds.each{|build| culprit_build = build if build.status =='failed' ; return [build, culprit_build] if build.status == 'passed'}
-    [culprit_build]
+    return [] if last_complete_build.status == 'passed'
+    result = []
+    builds.each do |build|
+      break if build.status == 'passed'
+      result << build
+    end
+    result
   end
 
   def repository
@@ -135,15 +143,15 @@ class Project < ActiveRecord::Base
     (Project.temp_config ||= Configuration.new).tap{|config| yield config}
   end
 
-  def self.projects_to_build
-    where("build_requested = 't' or next_build_at is null or next_build_at <= :next_build_at", :next_build_at => Time.now)
-  end
-
   def activity
     {'passed' => 'Sleeping', 'timeout' => 'Sleeping', 'failed' => 'Sleeping', 'building' => 'Building'}[latest_build_status] || 'Unknown'
   end
 
   def github_url
     url.gsub(/^git:\/\//, 'http://').gsub(/\.git$/, '') if url.include?('//github.com')
+  end
+
+  def building?
+    latest_build && latest_build.building?
   end
 end
